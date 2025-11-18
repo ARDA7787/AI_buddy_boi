@@ -1,16 +1,14 @@
 import { Request, Response } from 'express';
-import pool from '../database/connection';
-import { ApiResponse, Trip } from '../types';
+import db from '../database/connection';
+import { ApiResponse } from '../types';
 
 export const getAllTrips = async (req: Request, res: Response) => {
   try {
-    // For demo, return all trips
-    // In production, filter by authenticated user
-    const result = await pool.query(
+    const result = db.prepare(
       'SELECT id, user_id, destination, start_date, end_date, status, image_url, description, created_at FROM trips ORDER BY start_date DESC'
-    );
+    ).all();
 
-    const trips: any[] = result.rows.map(row => ({
+    const trips: any[] = (result as any[]).map(row => ({
       id: row.id,
       destination: row.destination,
       startDate: row.start_date,
@@ -40,12 +38,11 @@ export const getTripById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    const result = await pool.query(
-      'SELECT id, user_id, destination, start_date, end_date, status, image_url, description FROM trips WHERE id = $1',
-      [id]
-    );
+    const row = db.prepare(
+      'SELECT id, user_id, destination, start_date, end_date, status, image_url, description FROM trips WHERE id = ?'
+    ).get(id) as any;
 
-    if (result.rows.length === 0) {
+    if (!row) {
       const response: ApiResponse = {
         success: false,
         error: 'Trip not found',
@@ -53,7 +50,6 @@ export const getTripById = async (req: Request, res: Response) => {
       return res.status(404).json(response);
     }
 
-    const row = result.rows[0];
     const trip: any = {
       id: row.id,
       destination: row.destination,
@@ -85,12 +81,16 @@ export const createTrip = async (req: Request, res: Response) => {
     const { destination, startDate, endDate, description } = req.body;
     const userId = req.headers['user-id'] || 'demo-user-id';
 
-    const result = await pool.query(
-      'INSERT INTO trips (user_id, destination, start_date, end_date, description) VALUES ($1, $2, $3, $4, $5) RETURNING id, destination, start_date, end_date, status, description',
-      [userId, destination, startDate, endDate, description]
+    const stmt = db.prepare(
+      'INSERT INTO trips (user_id, destination, start_date, end_date, description) VALUES (?, ?, ?, ?, ?)'
     );
+    
+    const result = stmt.run(userId, destination, startDate, endDate, description);
 
-    const row = result.rows[0];
+    const row = db.prepare(
+      'SELECT id, destination, start_date, end_date, status, description FROM trips WHERE rowid = ?'
+    ).get(result.lastInsertRowid) as any;
+
     const trip: any = {
       id: row.id,
       destination: row.destination,

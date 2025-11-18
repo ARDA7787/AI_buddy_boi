@@ -1,44 +1,37 @@
 import { Request, Response } from 'express';
-import pool from '../database/connection';
-import { ApiResponse, User, UserPreferences } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import db from '../database/connection';
+import { ApiResponse, UserPreferences } from '../types';
 
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
     // For demo purposes, we'll do simple email lookup
-    // In production, you'd verify password hash
-    const result = await pool.query(
-      'SELECT id, email, name, preferences FROM users WHERE email = $1',
-      [email]
-    );
+    const user = db.prepare('SELECT id, email, name, preferences FROM users WHERE email = ?').get(email) as any;
 
-    if (result.rows.length === 0) {
+    if (!user) {
       // Auto-create user for demo
-      const newUserResult = await pool.query(
-        'INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id, email, name, preferences',
-        [email, email.split('@')[0]]
-      );
+      const stmt = db.prepare('INSERT INTO users (email, name) VALUES (?, ?)');
+      const result = stmt.run(email, email.split('@')[0]);
+      
+      const newUser = db.prepare('SELECT id, email, name, preferences FROM users WHERE id = ?').get(result.lastInsertRowid) as any;
 
-      const user = newUserResult.rows[0];
       const response: ApiResponse<{ user: any; token: string }> = {
         success: true,
         data: {
           user: {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            preferences: user.preferences,
+            id: newUser.id,
+            email: newUser.email,
+            name: newUser.name,
+            preferences: newUser.preferences ? JSON.parse(newUser.preferences) : null,
           },
-          token: 'demo-token-' + user.id,
+          token: 'demo-token-' + newUser.id,
         },
       };
 
       return res.json(response);
     }
 
-    const user = result.rows[0];
     const response: ApiResponse<{ user: any; token: string }> = {
       success: true,
       data: {
@@ -46,7 +39,7 @@ export const login = async (req: Request, res: Response) => {
           id: user.id,
           email: user.email,
           name: user.name,
-          preferences: user.preferences,
+          preferences: user.preferences ? JSON.parse(user.preferences) : null,
         },
         token: 'demo-token-' + user.id,
       },
@@ -68,12 +61,9 @@ export const register = async (req: Request, res: Response) => {
     const { email, password, name } = req.body;
 
     // Check if user exists
-    const existingUser = await pool.query(
-      'SELECT id FROM users WHERE email = $1',
-      [email]
-    );
+    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
 
-    if (existingUser.rows.length > 0) {
+    if (existingUser) {
       const response: ApiResponse = {
         success: false,
         error: 'User already exists',
@@ -81,13 +71,12 @@ export const register = async (req: Request, res: Response) => {
       return res.status(400).json(response);
     }
 
-    // Create user (in production, hash the password)
-    const result = await pool.query(
-      'INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id, email, name, preferences',
-      [email, name]
-    );
+    // Create user
+    const stmt = db.prepare('INSERT INTO users (email, name) VALUES (?, ?)');
+    const result = stmt.run(email, name);
 
-    const user = result.rows[0];
+    const user = db.prepare('SELECT id, email, name, preferences FROM users WHERE id = ?').get(result.lastInsertRowid) as any;
+
     const response: ApiResponse<{ user: any; token: string }> = {
       success: true,
       data: {
@@ -95,7 +84,7 @@ export const register = async (req: Request, res: Response) => {
           id: user.id,
           email: user.email,
           name: user.name,
-          preferences: user.preferences,
+          preferences: user.preferences ? JSON.parse(user.preferences) : null,
         },
         token: 'demo-token-' + user.id,
       },
@@ -115,39 +104,35 @@ export const register = async (req: Request, res: Response) => {
 export const savePreferences = async (req: Request, res: Response) => {
   try {
     const preferences: UserPreferences = req.body;
-
-    // For demo, we'll use a default user
-    // In production, get userId from authenticated session
     const userId = req.headers['user-id'] || 'demo-user-id';
 
-    // First, ensure user exists
-    let userResult = await pool.query(
-      'SELECT id FROM users WHERE id = $1',
-      [userId]
-    );
+    // Ensure user exists
+    let user = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
 
-    if (userResult.rows.length === 0) {
+    if (!user) {
       // Create demo user
-      userResult = await pool.query(
-        'INSERT INTO users (id, email, name) VALUES ($1, $2, $3) RETURNING id',
-        [userId, 'demo@example.com', 'Demo User']
+      db.prepare('INSERT INTO users (id, email, name) VALUES (?, ?, ?)').run(
+        userId, 
+        'demo@example.com', 
+        'Demo User'
       );
     }
 
     // Update preferences
-    const result = await pool.query(
-      'UPDATE users SET preferences = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, email, name, preferences',
-      [JSON.stringify(preferences), userId]
+    db.prepare('UPDATE users SET preferences = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+      JSON.stringify(preferences),
+      userId
     );
 
-    const user = result.rows[0];
+    const updatedUser = db.prepare('SELECT id, email, name, preferences FROM users WHERE id = ?').get(userId) as any;
+
     const response: ApiResponse<any> = {
       success: true,
       data: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        preferences: user.preferences,
+        id: updatedUser.id,
+        email: updatedUser.email,
+        name: updatedUser.name,
+        preferences: updatedUser.preferences ? JSON.parse(updatedUser.preferences) : null,
       },
     };
 

@@ -1,14 +1,15 @@
 # Quick Start Guide - AI Travel Buddy
 
-Get the app running in **10-15 minutes**! ⚡
+Get the app running in **5-10 minutes**! ⚡ No database server needed!
 
 ## Prerequisites Check
 
 Before starting, make sure you have:
 - ✅ Node.js 18+ (`node --version`)
-- ✅ PostgreSQL running (`psql --version`)
 - ✅ For iOS: Xcode with iOS Simulator (Mac only)
 - ✅ For Android: Android Studio with an emulator
+
+**That's it!** No PostgreSQL, Docker, or database server needed - we use SQLite!
 
 ## Step-by-Step Setup
 
@@ -24,27 +25,7 @@ cd ../mobile
 npm install
 ```
 
-### 2️⃣ Start PostgreSQL (1 minute)
-
-Choose one option:
-
-**Option A: Local PostgreSQL**
-```bash
-# Make sure it's running
-brew services start postgresql  # Mac
-sudo service postgresql start   # Linux
-```
-
-**Option B: Docker PostgreSQL**
-```bash
-docker run --name ai-travel-db \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=ai_travel_buddy \
-  -p 5432:5432 \
-  -d postgres:14
-```
-
-### 3️⃣ Set Up Database (1 minute)
+### 2️⃣ Set Up Database (10 seconds!)
 
 ```bash
 cd backend
@@ -53,12 +34,15 @@ npm run db:setup
 
 You should see:
 ```
+📁 SQLite database: /path/to/backend/data/travel_buddy.db
 ✅ Database tables created successfully
 ✅ Sample data seeded successfully
 ✅ Database setup complete!
 ```
 
-### 4️⃣ Start Backend (30 seconds)
+That's it! The SQLite database is created automatically. No server to configure!
+
+### 3️⃣ Start Backend (30 seconds)
 
 ```bash
 # From backend directory
@@ -75,7 +59,7 @@ You should see:
 
 ✅ **Backend is ready!** Keep this terminal open.
 
-### 5️⃣ Start Mobile App (1 minute)
+### 4️⃣ Start Mobile App (1 minute)
 
 Open a **NEW terminal**:
 
@@ -90,7 +74,7 @@ Wait for the Expo QR code to appear, then:
 - **Android**: Press `a`
 - **Physical device**: Scan QR with Expo Go app
 
-### 6️⃣ Test the App! 🎉
+### 5️⃣ Test the App! 🎉
 
 The app will open. Now test these flows:
 
@@ -129,6 +113,7 @@ The app will open. Now test these flows:
 ## ✅ Success Checklist
 
 - [ ] Backend running on http://localhost:3000
+- [ ] SQLite database created at backend/data/travel_buddy.db
 - [ ] Mobile app opened in simulator/emulator
 - [ ] Completed onboarding
 - [ ] Viewed Tokyo trip itinerary
@@ -137,15 +122,6 @@ The app will open. Now test these flows:
 - [ ] Viewed profile
 
 ## 🐛 Quick Fixes
-
-### Can't connect to database?
-```bash
-# Check PostgreSQL is running
-psql -U postgres -c "SELECT 1"
-
-# If not running, start it
-brew services start postgresql  # Mac
-```
 
 ### Backend port already in use?
 ```bash
@@ -158,10 +134,10 @@ kill -9 <PID>
 - Make sure backend shows "Running on http://localhost:3000"
 - Try restarting the Expo dev server: Press `r` in Expo terminal
 
-### Database errors?
+### Want to reset the database?
 ```bash
-# Reset database
 cd backend
+rm -rf data/
 npm run db:setup
 ```
 
@@ -190,11 +166,11 @@ Common issues and solutions:
 
 1. **"Cannot find module"** → Run `npm install` again
 2. **"Port 3000 in use"** → Change PORT in `backend/.env`
-3. **"Database connection failed"** → Check PostgreSQL is running
-4. **"Expo error"** → Try `npx expo start --clear`
+3. **"Expo error"** → Try `npx expo start --clear`
 
 ---
 
-**Total Setup Time**: ~10-15 minutes ⏱️
+**Total Setup Time**: ~5-10 minutes ⏱️  
+**No database server needed!** 🎉
 
 Enjoy building with AI Travel Buddy! 🚀

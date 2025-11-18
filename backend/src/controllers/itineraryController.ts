@@ -1,17 +1,16 @@
 import { Request, Response } from 'express';
-import pool from '../database/connection';
-import { ApiResponse, Itinerary } from '../types';
+import db from '../database/connection';
+import { ApiResponse } from '../types';
 
 export const getItinerary = async (req: Request, res: Response) => {
   try {
     const { tripId } = req.params;
 
-    const result = await pool.query(
-      'SELECT id, trip_id, days FROM itineraries WHERE trip_id = $1',
-      [tripId]
-    );
+    const row = db.prepare(
+      'SELECT id, trip_id, days FROM itineraries WHERE trip_id = ?'
+    ).get(tripId) as any;
 
-    if (result.rows.length === 0) {
+    if (!row) {
       const response: ApiResponse = {
         success: false,
         error: 'Itinerary not found',
@@ -19,11 +18,10 @@ export const getItinerary = async (req: Request, res: Response) => {
       return res.status(404).json(response);
     }
 
-    const row = result.rows[0];
     const itinerary: any = {
       id: row.id,
       tripId: row.trip_id,
-      days: row.days,
+      days: JSON.parse(row.days),
     };
 
     const response: ApiResponse<any> = {
@@ -48,31 +46,36 @@ export const updateItinerary = async (req: Request, res: Response) => {
     const { days } = req.body;
 
     // Check if itinerary exists
-    const existing = await pool.query(
-      'SELECT id FROM itineraries WHERE trip_id = $1',
-      [tripId]
-    );
+    const existing = db.prepare(
+      'SELECT id FROM itineraries WHERE trip_id = ?'
+    ).get(tripId);
 
-    let result;
-    if (existing.rows.length === 0) {
+    let row: any;
+    if (!existing) {
       // Create new itinerary
-      result = await pool.query(
-        'INSERT INTO itineraries (trip_id, days) VALUES ($1, $2) RETURNING id, trip_id, days',
-        [tripId, JSON.stringify(days)]
+      const stmt = db.prepare(
+        'INSERT INTO itineraries (trip_id, days) VALUES (?, ?)'
       );
+      const result = stmt.run(tripId, JSON.stringify(days));
+      
+      row = db.prepare(
+        'SELECT id, trip_id, days FROM itineraries WHERE rowid = ?'
+      ).get(result.lastInsertRowid);
     } else {
       // Update existing itinerary
-      result = await pool.query(
-        'UPDATE itineraries SET days = $1, updated_at = CURRENT_TIMESTAMP WHERE trip_id = $2 RETURNING id, trip_id, days',
-        [JSON.stringify(days), tripId]
-      );
+      db.prepare(
+        'UPDATE itineraries SET days = ?, updated_at = CURRENT_TIMESTAMP WHERE trip_id = ?'
+      ).run(JSON.stringify(days), tripId);
+      
+      row = db.prepare(
+        'SELECT id, trip_id, days FROM itineraries WHERE trip_id = ?'
+      ).get(tripId);
     }
 
-    const row = result.rows[0];
     const itinerary: any = {
       id: row.id,
       tripId: row.trip_id,
-      days: row.days,
+      days: JSON.parse(row.days),
     };
 
     const response: ApiResponse<any> = {

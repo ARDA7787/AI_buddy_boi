@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
-import pool from '../database/connection';
-import { ApiResponse, Message } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import db from '../database/connection';
+import { ApiResponse } from '../types';
 
 // Mock AI responses
 const getMockAIResponse = (userMessage: string): { text: string; suggestions?: string[] } => {
@@ -63,7 +62,6 @@ const getMockAIResponse = (userMessage: string): { text: string; suggestions?: s
     };
   }
 
-  // Default response
   return {
     text: "I'm here to help with your travel plans! You can ask me about destinations, restaurants, activities, weather, or anything else related to your trip.",
     suggestions: [
@@ -80,36 +78,45 @@ export const sendMessage = async (req: Request, res: Response) => {
     const userId = req.headers['user-id'] || 'demo-user-id';
 
     // Ensure user exists
-    const userCheck = await pool.query('SELECT id FROM users WHERE id = $1', [userId]);
-    if (userCheck.rows.length === 0) {
-      await pool.query(
-        'INSERT INTO users (id, email, name) VALUES ($1, $2, $3)',
-        [userId, 'demo@example.com', 'Demo User']
+    const userCheck = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);
+    if (!userCheck) {
+      db.prepare('INSERT INTO users (id, email, name) VALUES (?, ?, ?)').run(
+        userId,
+        'demo@example.com',
+        'Demo User'
       );
     }
 
     // Save user message
-    await pool.query(
-      'INSERT INTO messages (user_id, trip_id, text, sender) VALUES ($1, $2, $3, $4)',
-      [userId, tripId || null, message, 'user']
-    );
+    db.prepare(
+      'INSERT INTO messages (user_id, trip_id, text, sender) VALUES (?, ?, ?, ?)'
+    ).run(userId, tripId || null, message, 'user');
 
     // Generate AI response
     const aiResponse = getMockAIResponse(message);
 
     // Save AI message
-    const result = await pool.query(
-      'INSERT INTO messages (user_id, trip_id, text, sender, suggestions) VALUES ($1, $2, $3, $4, $5) RETURNING id, text, sender, suggestions, timestamp',
-      [userId, tripId || null, aiResponse.text, 'ai', JSON.stringify(aiResponse.suggestions || [])]
+    const stmt = db.prepare(
+      'INSERT INTO messages (user_id, trip_id, text, sender, suggestions) VALUES (?, ?, ?, ?, ?)'
+    );
+    const result = stmt.run(
+      userId,
+      tripId || null,
+      aiResponse.text,
+      'ai',
+      JSON.stringify(aiResponse.suggestions || [])
     );
 
-    const row = result.rows[0];
+    const row = db.prepare(
+      'SELECT id, text, sender, suggestions, timestamp FROM messages WHERE rowid = ?'
+    ).get(result.lastInsertRowid) as any;
+
     const responseMessage: any = {
       id: row.id,
       text: row.text,
       sender: row.sender,
       timestamp: row.timestamp,
-      suggestions: row.suggestions,
+      suggestions: row.suggestions ? JSON.parse(row.suggestions) : null,
     };
 
     const response: ApiResponse<any> = {
@@ -133,11 +140,11 @@ export const getChatHistory = async (req: Request, res: Response) => {
     const { tripId } = req.query;
     const userId = req.headers['user-id'] || 'demo-user-id';
 
-    let query = 'SELECT id, text, sender, suggestions, timestamp FROM messages WHERE user_id = $1';
+    let query = 'SELECT id, text, sender, suggestions, timestamp FROM messages WHERE user_id = ?';
     const params: any[] = [userId];
 
     if (tripId) {
-      query += ' AND trip_id = $2';
+      query += ' AND trip_id = ?';
       params.push(tripId);
     } else {
       query += ' AND trip_id IS NULL';
@@ -145,14 +152,14 @@ export const getChatHistory = async (req: Request, res: Response) => {
 
     query += ' ORDER BY timestamp ASC LIMIT 50';
 
-    const result = await pool.query(query, params);
+    const result = db.prepare(query).all(...params) as any[];
 
-    const messages: any[] = result.rows.map(row => ({
+    const messages: any[] = result.map(row => ({
       id: row.id,
       text: row.text,
       sender: row.sender,
       timestamp: row.timestamp,
-      suggestions: row.suggestions,
+      suggestions: row.suggestions ? JSON.parse(row.suggestions) : null,
     }));
 
     const response: ApiResponse<any[]> = {
